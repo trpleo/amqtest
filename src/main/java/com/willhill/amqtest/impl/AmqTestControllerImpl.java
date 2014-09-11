@@ -40,7 +40,7 @@ public class AmqTestControllerImpl implements AmqTestController {
 	public AmqTestControllerImpl(IJmsConfig jmsConfig, IJmsListener producerListener) {
 		super();
 		
-		this.producer = new JmsProducerImpl(jmsConfig, producerListener);
+		this.producer = null;// new JmsProducerImpl(jmsConfig, producerListener);
 	}
 
 	public List<IJmsConsumer> getAllConsumers() {
