@@ -16,12 +16,11 @@ import scala.NotImplementedError;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.willhill.amqtest.AmqTestController;
-import com.willhill.amqtest.TestMessage;
 import com.williamhill.pds.jmsclient.IJmsConfig;
 import com.williamhill.pds.jmsclient.IJmsConsumer;
+import com.williamhill.pds.jmsclient.IJmsConsumerListener;
 import com.williamhill.pds.jmsclient.IJmsListener;
 import com.williamhill.pds.jmsclient.IJmsProducer;
-import com.williamhill.pds.jmsclient.impl.JmsConsumerImpl;
 import com.williamhill.pds.jmsclient.impl.JmsProducerImpl;
 
 public class AmqTestControllerImpl implements AmqTestController {
@@ -33,14 +32,14 @@ public class AmqTestControllerImpl implements AmqTestController {
 	
 	private final List<ConsumerContainer> consumerContainers = new ArrayList<ConsumerContainer>();
 	private final IJmsProducer producer;
-	private final Queue<TestMessage> sentMessages = new LinkedList<TestMessage>();
+	private final Queue<String> sentMessages = new LinkedList<String>();
 	
 	private Timer timer = null;
 	
 	public AmqTestControllerImpl(IJmsConfig jmsConfig, IJmsListener producerListener) {
 		super();
 		
-		this.producer = null;// new JmsProducerImpl(jmsConfig, producerListener);
+		this.producer = new JmsProducerImpl(jmsConfig, producerListener);
 	}
 
 	public List<IJmsConsumer> getAllConsumers() {
@@ -57,15 +56,15 @@ public class AmqTestControllerImpl implements AmqTestController {
 		return consumers;
 	}
 
-	public List<TestMessage> getMissingMessages(int consumerId) {
-		final Queue<TestMessage> recievedMessages = this.consumerContainers.get(consumerId).getSentMessages();
-		final Queue<TestMessage> sentMessagesClone = new LinkedList<TestMessage>();
-		
-		sentMessagesClone.addAll(this.sentMessages);
-		
-		sentMessagesClone.removeAll(recievedMessages);
-		
-		return Arrays.asList(sentMessagesClone.toArray(new TestMessage[sentMessagesClone.size()]));
+	public List<String> getMissingMessages(int consumerId) {
+		final Queue<String> sentMessagesClone = new LinkedList<String>(this.sentMessages);
+		sentMessagesClone.removeAll(this.consumerContainers.get(consumerId).getRecievedMessages());
+		return Arrays.asList(sentMessagesClone.toArray(new String[sentMessagesClone.size()]));
+	}
+	
+	public List<String> getRecievedMessages(int consumerId) {
+		final Queue<String> recievedMessages = this.consumerContainers.get(consumerId).getRecievedMessages();
+		return Arrays.asList(recievedMessages.toArray(new String[recievedMessages.size()]));
 	}
 
 	public void startProducer() {
@@ -78,9 +77,9 @@ public class AmqTestControllerImpl implements AmqTestController {
 		}
 	}
 
-	public Entry<Integer, IJmsConsumer> createConsumer(IJmsConfig config) {
-		final IJmsConsumer consumer = new JmsConsumerImpl(config, null);
-		this.getConsumers().add(consumer);
+	public Entry<Integer, IJmsConsumer> createConsumer(IJmsConfig config, IJmsConsumerListener listener) {
+		final ConsumerContainer cc = new ConsumerContainer(config, listener);
+		this.consumerContainers.add(cc);
 		
 		return new Entry<Integer, IJmsConsumer>() {
 			
@@ -89,11 +88,11 @@ public class AmqTestControllerImpl implements AmqTestController {
 			}
 			
 			public IJmsConsumer getValue() {
-				return consumer;
+				return cc.getConsumer();
 			}
 			
 			public Integer getKey() {
-				return Integer.valueOf(getConsumers().indexOf(consumer));
+				return Integer.valueOf(getConsumers().indexOf(cc.getConsumer()));
 			}
 		};
 	}
@@ -147,29 +146,9 @@ public class AmqTestControllerImpl implements AmqTestController {
 		return true;
 	}
 	
-	private static void sendBase(final String message, final IJmsProducer producer, final Queue<TestMessage> sentMessages) {
-		final Date timestamp = new Date();
-		final TestMessage tMessage = new TestMessage() {
-			public long getCreationTime() {
-				return timestamp.getTime();
-			}
-			public String getContent() {
-				return message;
-			}
-			@Override
-			public boolean equals(Object entity) {
-				if (this == entity) return true;
-				if (entity instanceof TestMessage) {
-					final TestMessage other = (TestMessage) entity;
-					return other.getCreationTime() == this.getCreationTime() && other.getContent().equals(this.getContent());
-				}
-				
-				return false;
-			}
-		};
+	private static void sendBase(final String message, final IJmsProducer producer, final Queue<String> sentMessages) {
 		final JsonNode json = mapper.createObjectNode().put("message", message);
-		
-		producer.send(0, timestamp, json);
-		sentMessages.add(tMessage);
+		producer.send(0, new Date(), json);
+		sentMessages.add(json.toString());
 	}
 }

@@ -17,6 +17,7 @@ import org.apache.commons.cli.ParseException;
 import com.willhill.amqtest.impl.AmqTestControllerImpl;
 import com.williamhill.pds.jmsclient.IJmsConfig;
 import com.williamhill.pds.jmsclient.IJmsConsumer;
+import com.williamhill.pds.jmsclient.IJmsConsumerListener;
 import com.williamhill.pds.jmsclient.IJmsListener;
 
 public class TestAmqCluster {
@@ -69,7 +70,7 @@ public class TestAmqCluster {
 	final Option missingmessages = OptionBuilder.withArgName("mm").hasArg().withDescription("missing messages for consumer <n>").create("mm");
 	final Option startProducer = OptionBuilder.withArgName("startp").hasArg().withDescription("start the producer").create("startp");
 	final Option startConsumer = OptionBuilder.withArgName("startc").hasArg().withDescription("start a consumer with id <n>").create("startc");
-	final Option createConsumer = OptionBuilder.withArgName("cc").hasArg().withDescription("create a consumer with the given properites").create("cc");
+	final Option createConsumer = OptionBuilder.withArgName("cc").hasArgs().withDescription("create a consumer with the given properites").create("cc");
 	final Option stopp = OptionBuilder.withArgName("stopp").hasArg().withDescription("stop the producer").create("stopp");
 	final Option stopc = OptionBuilder.withArgName("stopc").hasArg().withDescription("stop a consumer with id <n>").create("stopc");
 	final Option send = OptionBuilder.withArgName("send").hasArg().withDescription("send a message").create("send");
@@ -116,7 +117,7 @@ public class TestAmqCluster {
 		// CLI Parser
 		CommandLineParser parser = new GnuParser();
 		try {
-			CommandLine line = parser.parse(options, args);
+			final CommandLine line = parser.parse(options, args);
 			if (line.hasOption("h")) {
 				HelpFormatter formatter = new HelpFormatter();
 				formatter.printHelp("LyraPolicy", options);
@@ -132,8 +133,8 @@ public class TestAmqCluster {
 				if (line.hasOption("mm")) {
 					Integer consumerId = Integer.getInteger(line.getOptionValue("mm"));
 					System.out.println("list of test messages");
-					for (TestMessage testMessage : controller.getMissingMessages(consumerId)) {
-						System.out.println(testMessage.toString());
+					for (String testMessage : controller.getMissingMessages(consumerId)) {
+						System.out.println(testMessage);
 					}
 				}
 
@@ -146,22 +147,26 @@ public class TestAmqCluster {
 				}
 
 				if (line.hasOption("cc")) {
+					
+					if (line.getArgs().length != 4)
+						throw new IllegalArgumentException("cc command must have 6 parameters! (-cc 'uri' 'queue name' 'user' 'password')");
+					
 					controller.createConsumer(new IJmsConfig() {
 
 						public String getUri() {
-							return null;
+							return line.getArgs()[0];
 						}
 
 						public String getQueueName() {
-							return null;
+							return line.getArgs()[1];
 						}
 
 						public String getUser() {
-							return null;
+							return line.getArgs()[2];
 						}
 
 						public String getPassword() {
-							return null;
+							return line.getArgs()[3];
 						}
 
 						public boolean isPersistent() {
@@ -171,6 +176,24 @@ public class TestAmqCluster {
 						public boolean resetOnError() {
 							return false;
 						}
+					}, new IJmsConsumerListener() {
+
+						public void onConnected() {
+							System.out.println("client connected to broker...");
+						}
+
+						public void onDisconnected() {
+							System.out.println("client disconnected to broker...");
+						}
+
+						public void onError(Exception cause) {
+							System.out.println("an error occured in the client: " + cause.getMessage());
+						}
+
+						public void onMessageReceived(String message) {
+							System.out.println("message is [" + message + "]");
+						}
+						
 					});
 				}
 

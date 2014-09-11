@@ -6,6 +6,7 @@ import java.util.Map;
 
 import com.williamhill.pds.jmsclient.IJmsConfig;
 import com.williamhill.pds.jmsclient.IJmsConsumer;
+import com.williamhill.pds.jmsclient.IJmsConsumerListener;
 
 
 public interface AmqTestController {
@@ -29,7 +30,8 @@ public interface AmqTestController {
 	 * mm <consumer n>
 	 * <list of messages>
 	 */
-	List<TestMessage> getMissingMessages(int consumerId);
+	List<String> getMissingMessages(int consumerId);
+	List<String> getRecievedMessages(int consumerId);
 	
 	/**
 	 * start producer
@@ -46,7 +48,7 @@ public interface AmqTestController {
 	 * create consumer
 	 * Map<Integer, IJmsConsumer>
 	 */
-	Map.Entry<Integer, IJmsConsumer> createConsumer(IJmsConfig config);
+	Map.Entry<Integer, IJmsConsumer> createConsumer(IJmsConfig config, IJmsConsumerListener listener);
 	
 	/**
 	 * stop producer
