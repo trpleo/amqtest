@@ -220,11 +220,6 @@ public class TestAmqCluster {
 				if (line.hasOption("fsend")) {
 					controller.sendMessagesFromFile(new File(line.getOptionValue("fsend")));
 				}
-
-				// here we'll start the "server" later.
-				// Server server = new Server(serverAddress, serverPort,
-				// serverThreads, serverThreadTimeout, verboseOutput);
-				// server.run();
 			}
 		} catch (ParseException exp) {
 			System.err.println("Parsing failed. Reason: " + exp.getMessage());
