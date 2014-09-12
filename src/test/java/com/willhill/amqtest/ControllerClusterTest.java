@@ -56,12 +56,14 @@ public class ControllerClusterTest {
 	private BrokerService slaveBroker;
 	
     private AmqTestController testedEntity;
+    
+    private File dataFileDir;
 	
     @Before
 	public void init() throws Exception {
 		MockitoAnnotations.initMocks(this);
 		
-		File dataFileDir = kahadbFolder.newFolder(KAHADB_DIR);
+		dataFileDir = kahadbFolder.newFolder(KAHADB_DIR);
 		
 		when(jmsClientConfig.getUri()).thenReturn("failover:(tcp://localhost:" + MASTER_PORT + ",tcp://localhost:" + SLAVE_PORT + ")");
 		when(jmsClientConfig.getQueueName()).thenReturn(TEST_AMQ);
@@ -83,15 +85,9 @@ public class ControllerClusterTest {
 		when(jmsSlaveConfig.getPassword()).thenReturn(null);
 		when(jmsSlaveConfig.isPersistent()).thenReturn(false);
 		when(jmsSlaveConfig.resetOnError()).thenReturn(false);
-		
-		masterBroker = buildBroker(dataFileDir, jmsMasterConfig);
-		
-		slaveBroker = buildBroker(dataFileDir, jmsSlaveConfig);
-		
-		testedEntity = new AmqTestControllerImpl(jmsClientConfig, producerListener);
 	}
 
-	private BrokerService buildBroker(File dataFileDir, IJmsConfig jmsConfig) throws Exception, IOException {
+	private BrokerService buildBroker(File dataFileDir, IJmsConfig jmsConfig, boolean shouldStartNow) throws Exception, IOException {
 		BrokerService broker = new BrokerService();
 		
 		broker.addConnector(jmsConfig.getUri());
@@ -102,9 +98,30 @@ public class ControllerClusterTest {
 		broker.setWaitForSlaveTimeout(1000L);
 //		masterBroker.setDeleteAllMessagesOnStartup(true);
 		broker.setPersistenceAdapter(adaptorBuilder(dataFileDir, 1000, 1000));
-		broker.start();
+		
+		if (shouldStartNow) {
+			broker.start();
+		}
 		
 		return broker;
+	}
+	
+	private Thread startBrokerOnNewThread(final BrokerService service) {
+		Thread th = new Thread(new Runnable() {
+
+			public void run() {
+				try {
+					service.start();
+				} catch (Exception e) {
+					throw new RuntimeException(e);
+				}
+			}
+			
+		});
+		
+		th.start();
+		
+		return th;
 	}
     
     @After
@@ -130,8 +147,11 @@ public class ControllerClusterTest {
 	}
 
 	@Test
-	public void shouldConnectToCluster() throws InterruptedException {
+	public void shouldConnectToCluster() throws IOException, Exception {
 		// given
+		masterBroker = buildBroker(dataFileDir, jmsMasterConfig, true);
+		slaveBroker = buildBroker(dataFileDir, jmsSlaveConfig, true);
+		testedEntity = new AmqTestControllerImpl(jmsClientConfig, producerListener);
 		testedEntity.createConsumer(jmsClientConfig, consumerListener);
 		
 		// when
@@ -153,8 +173,11 @@ public class ControllerClusterTest {
 	}
 	
 	@Test
-	public void shouldPassAMessageThroughCluster() throws InterruptedException {
+	public void shouldPassAMessageThroughCluster() throws IOException, Exception {
 		// given
+		masterBroker = buildBroker(dataFileDir, jmsMasterConfig, true);
+		slaveBroker = buildBroker(dataFileDir, jmsSlaveConfig, true);
+		testedEntity = new AmqTestControllerImpl(jmsClientConfig, producerListener);
 		testedEntity.createConsumer(jmsClientConfig, consumerListener);
 		
 		// when
@@ -186,8 +209,12 @@ public class ControllerClusterTest {
 	
 	@Ignore
 	@Test
-	public void shouldPassAMessageIfMasterDies() throws InterruptedException {
+	public void shouldPassAMessageIfMasterDies() throws IOException, Exception {
 		// given
+		masterBroker = buildBroker(dataFileDir, jmsMasterConfig, false);
+		Thread master = startBrokerOnNewThread(masterBroker);
+		slaveBroker = buildBroker(dataFileDir, jmsSlaveConfig, true);
+		testedEntity = new AmqTestControllerImpl(jmsClientConfig, producerListener);
 		testedEntity.createConsumer(jmsClientConfig, consumerListener);
 		
 		// when
