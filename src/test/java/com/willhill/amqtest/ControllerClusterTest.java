@@ -6,12 +6,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.File;
+import java.io.IOException;
 
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter;
 import org.apache.activemq.util.IOHelper;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -32,34 +34,9 @@ public class ControllerClusterTest {
 
 	private static ObjectMapper mapper = new ObjectMapper();
 	private static final String TEST_AMQ = "test-amq";
-	
-//	public void init() {
-//		BrokerFactoryBean masterBrokerFactory = new BrokerFactoryBean(new ClassPathResource("master.xml"));
-//		masterBrokerFactory.afterPropertiesSet();
-//		final BrokerService masterBroker = masterBrokerFactory.getBroker();
-//
-//		BrokerFactoryBean slaveBrokerFactory = new BrokerFactoryBean(new ClassPathResource("slave.xml"));
-//		slaveBrokerFactory.afterPropertiesSet();
-//		final BrokerService slaveBroker = slaveBrokerFactory.getBroker();
-//
-//		masterBroker.start();
-//		masterBroker.waitUntilStarted();
-//		System.out.println("Master started ...");
-//
-//		slaveBroker.start();
-//		slaveBroker.waitUntilStarted();
-//		System.out.println("Slave started ...");
-//
-//		// Stop Master
-//		masterBroker.stop();
-//		masterBroker.waitUntilStopped();
-//
-//		assertThat(slaveBroker.isSlave()).isFalse();
-//	}
-	
 	private static final Integer MASTER_PORT = 61016;
 	private static final Integer SLAVE_PORT = 61116;
-	private static final String KAHADB_DIR = "testkahadb1";
+	private static final String KAHADB_DIR = "testkahadb";
 	
 	@Rule
     public TemporaryFolder kahadbFolder = new TemporaryFolder();
@@ -78,9 +55,6 @@ public class ControllerClusterTest {
 	private BrokerService masterBroker;
 	private BrokerService slaveBroker;
 	
-//	private BrokerService master;
-//    private AtomicReference<BrokerService> slave = new AtomicReference<BrokerService>();
-    
     private AmqTestController testedEntity;
 	
     @Before
@@ -110,29 +84,27 @@ public class ControllerClusterTest {
 		when(jmsSlaveConfig.isPersistent()).thenReturn(false);
 		when(jmsSlaveConfig.resetOnError()).thenReturn(false);
 		
-		masterBroker = new BrokerService();
-		masterBroker.addConnector(jmsMasterConfig.getUri());
-		masterBroker.setBrokerName(jmsMasterConfig.getQueueName());
-		masterBroker.setUseShutdownHook(false);
-		masterBroker.setPersistent(jmsMasterConfig.isPersistent());
-		masterBroker.setUseJmx(false);
-		masterBroker.setWaitForSlaveTimeout(1000L);
-//		masterBroker.setDeleteAllMessagesOnStartup(true);
-		masterBroker.setPersistenceAdapter(adaptorBuilder(dataFileDir, 1000, 1000));
-		masterBroker.start();
+		masterBroker = buildBroker(dataFileDir, jmsMasterConfig);
 		
-		slaveBroker = new BrokerService();
-		slaveBroker.addConnector(jmsSlaveConfig.getUri());
-		slaveBroker.setBrokerName(jmsSlaveConfig.getQueueName());
-		slaveBroker.setUseShutdownHook(false);
-		slaveBroker.setPersistent(jmsSlaveConfig.isPersistent());
-		slaveBroker.setUseJmx(false);
-		slaveBroker.setWaitForSlaveTimeout(1000L);
-//        slaveBroker.setDeleteAllMessagesOnStartup(true);
-		slaveBroker.setPersistenceAdapter(adaptorBuilder(dataFileDir, 1000, 1000));
-		slaveBroker.start();
+		slaveBroker = buildBroker(dataFileDir, jmsSlaveConfig);
 		
 		testedEntity = new AmqTestControllerImpl(jmsClientConfig, producerListener);
+	}
+
+	private BrokerService buildBroker(File dataFileDir, IJmsConfig jmsConfig) throws Exception, IOException {
+		BrokerService broker = new BrokerService();
+		
+		broker.addConnector(jmsConfig.getUri());
+		broker.setBrokerName(jmsConfig.getQueueName());
+		broker.setUseShutdownHook(false);
+		broker.setPersistent(jmsConfig.isPersistent());
+		broker.setUseJmx(false);
+		broker.setWaitForSlaveTimeout(1000L);
+//		masterBroker.setDeleteAllMessagesOnStartup(true);
+		broker.setPersistenceAdapter(adaptorBuilder(dataFileDir, 1000, 1000));
+		broker.start();
+		
+		return broker;
 	}
     
     @After
@@ -182,6 +154,39 @@ public class ControllerClusterTest {
 	
 	@Test
 	public void shouldPassAMessageThroughCluster() throws InterruptedException {
+		// given
+		testedEntity.createConsumer(jmsClientConfig, consumerListener);
+		
+		// when
+		testedEntity.startProducer();
+		testedEntity.startConsumer(0);
+		
+		final String MESSAGE = "hello cluster";
+		testedEntity.send(MESSAGE);
+		
+		Thread.sleep(500L);
+		
+		// then
+		verify(producerListener, times(1)).onConnected();
+		verify(producerListener, times(0)).onDisconnected();
+		
+		verify(consumerListener, times(1)).onConnected();
+		verify(consumerListener, times(0)).onDisconnected();
+		
+		assertThat(testedEntity.getAllConsumers().size()).isEqualTo(1);
+		assertThat(testedEntity.getMissingMessages(0).size()).isEqualTo(0);
+		
+		final JsonNode json = mapper.createObjectNode().put("message", MESSAGE);
+		assertThat(testedEntity.getRecievedMessages(0).get(0)).isEqualTo(json.toString());
+		
+		// stopping - since isConnected() mehod is missing from the interface
+		testedEntity.stopProducer();
+		testedEntity.stopConsumer(0);
+	}
+	
+	@Ignore
+	@Test
+	public void shouldPassAMessageIfMasterDies() throws InterruptedException {
 		// given
 		testedEntity.createConsumer(jmsClientConfig, consumerListener);
 		
