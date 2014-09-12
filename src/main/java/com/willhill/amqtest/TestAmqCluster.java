@@ -22,6 +22,8 @@ import com.williamhill.pds.jmsclient.IJmsListener;
 
 public class TestAmqCluster {
 	
+	private final String KAHADB_DIR = "target/test-amq-data/perfTest/kahadb";
+	
 	// Defaults
 	final AmqTestController controller = new AmqTestControllerImpl(new IJmsConfig() {
 

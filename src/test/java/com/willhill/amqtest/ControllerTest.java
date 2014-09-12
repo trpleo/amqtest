@@ -1,4 +1,4 @@
-package com.willhill;
+package com.willhill.amqtest;
 
 import static org.fest.assertions.api.Assertions.assertThat;
 import static org.mockito.Mockito.times;
