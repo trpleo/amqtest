@@ -69,21 +69,21 @@ public class ControllerClusterTest {
 		when(jmsClientConfig.getQueueName()).thenReturn(TEST_AMQ);
 		when(jmsClientConfig.getUser()).thenReturn(null);
 		when(jmsClientConfig.getPassword()).thenReturn(null);
-		when(jmsClientConfig.isPersistent()).thenReturn(false);
+//		when(jmsClientConfig.isPersistent()).thenReturn(true);
 		when(jmsClientConfig.resetOnError()).thenReturn(false);
 		
 		when(jmsMasterConfig.getUri()).thenReturn("tcp://localhost:" + MASTER_PORT.toString());
 		when(jmsMasterConfig.getQueueName()).thenReturn(TEST_AMQ);
 		when(jmsMasterConfig.getUser()).thenReturn(null);
 		when(jmsMasterConfig.getPassword()).thenReturn(null);
-		when(jmsMasterConfig.isPersistent()).thenReturn(false);
+//		when(jmsMasterConfig.isPersistent()).thenReturn(true);
 		when(jmsMasterConfig.resetOnError()).thenReturn(false);
 		
 		when(jmsSlaveConfig.getUri()).thenReturn("tcp://localhost:" + SLAVE_PORT);
 		when(jmsSlaveConfig.getQueueName()).thenReturn(TEST_AMQ);
 		when(jmsSlaveConfig.getUser()).thenReturn(null);
 		when(jmsSlaveConfig.getPassword()).thenReturn(null);
-		when(jmsSlaveConfig.isPersistent()).thenReturn(false);
+//		when(jmsSlaveConfig.isPersistent()).thenReturn(true);
 		when(jmsSlaveConfig.resetOnError()).thenReturn(false);
 	}
 
@@ -95,7 +95,8 @@ public class ControllerClusterTest {
 		broker.setUseShutdownHook(false);
 		broker.setPersistent(jmsConfig.isPersistent());
 		broker.setUseJmx(false);
-		broker.setWaitForSlaveTimeout(1000L);
+		broker.setWaitForSlaveTimeout(200L);
+		
 //		masterBroker.setDeleteAllMessagesOnStartup(true);
 		broker.setPersistenceAdapter(adaptorBuilder(dataFileDir, 1000, 1000));
 		
@@ -149,6 +150,10 @@ public class ControllerClusterTest {
 	@Test
 	public void shouldConnectToCluster() throws IOException, Exception {
 		// given
+		when(jmsClientConfig.isPersistent()).thenReturn(false);
+		when(jmsMasterConfig.isPersistent()).thenReturn(false);
+		when(jmsSlaveConfig.isPersistent()).thenReturn(false);
+		
 		masterBroker = buildBroker(dataFileDir, jmsMasterConfig, true);
 		slaveBroker = buildBroker(dataFileDir, jmsSlaveConfig, true);
 		testedEntity = new AmqTestControllerImpl(jmsClientConfig, producerListener);
@@ -175,6 +180,10 @@ public class ControllerClusterTest {
 	@Test
 	public void shouldPassAMessageThroughCluster() throws IOException, Exception {
 		// given
+		when(jmsClientConfig.isPersistent()).thenReturn(false);
+		when(jmsMasterConfig.isPersistent()).thenReturn(false);
+		when(jmsSlaveConfig.isPersistent()).thenReturn(false);
+		
 		masterBroker = buildBroker(dataFileDir, jmsMasterConfig, true);
 		slaveBroker = buildBroker(dataFileDir, jmsSlaveConfig, true);
 		testedEntity = new AmqTestControllerImpl(jmsClientConfig, producerListener);
@@ -207,13 +216,17 @@ public class ControllerClusterTest {
 		testedEntity.stopConsumer(0);
 	}
 	
-	@Ignore
 	@Test
 	public void shouldPassAMessageIfMasterDies() throws IOException, Exception {
 		// given
+		when(jmsClientConfig.isPersistent()).thenReturn(true);
+		when(jmsMasterConfig.isPersistent()).thenReturn(true);
+		when(jmsSlaveConfig.isPersistent()).thenReturn(true);
+		
 		masterBroker = buildBroker(dataFileDir, jmsMasterConfig, false);
 		Thread master = startBrokerOnNewThread(masterBroker);
-		slaveBroker = buildBroker(dataFileDir, jmsSlaveConfig, true);
+		slaveBroker = buildBroker(dataFileDir, jmsSlaveConfig, false);
+		Thread client = startBrokerOnNewThread(masterBroker);
 		testedEntity = new AmqTestControllerImpl(jmsClientConfig, producerListener);
 		testedEntity.createConsumer(jmsClientConfig, consumerListener);
 		
@@ -222,6 +235,12 @@ public class ControllerClusterTest {
 		testedEntity.startConsumer(0);
 		
 		final String MESSAGE = "hello cluster";
+		testedEntity.send(MESSAGE);
+		
+		master.interrupt();
+		
+		Thread.sleep(500L);
+		
 		testedEntity.send(MESSAGE);
 		
 		Thread.sleep(500L);
@@ -238,6 +257,7 @@ public class ControllerClusterTest {
 		
 		final JsonNode json = mapper.createObjectNode().put("message", MESSAGE);
 		assertThat(testedEntity.getRecievedMessages(0).get(0)).isEqualTo(json.toString());
+		assertThat(testedEntity.getRecievedMessages(0).get(1)).isEqualTo(json.toString());
 		
 		// stopping - since isConnected() mehod is missing from the interface
 		testedEntity.stopProducer();
